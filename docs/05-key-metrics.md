@@ -2,7 +2,7 @@
 
 A practical cheat sheet for Cassandra / HCD health: what to watch, where to find it, and what rising values usually mean. Use this during a [live snapshot](01-health-snapshot-bare-metal.md) (steps **1a** / **1b**), when reviewing collector `metrics.jmx`, or in Grafana after Montecristo analysis.
 
-You do not need every JMX bean — focus on **latency**, **errors**, **backpressure**, **compaction**, **hints**, and **resources**.
+You do not need every JMX bean — focus on **latency**, **errors**, **backpressure**, **compaction**, **hints**, **host resources**, and **JVM**.
 
 ---
 
@@ -76,6 +76,8 @@ JMX mirror: `ThreadPools` → `CurrentlyBlockedTasks`, `PendingTasks`, `ActiveTa
 | SSTable count per table | `nodetool tablestats` | Grows without compaction keeping pace |
 | Disk used / free | `df`, PVC usage, `Storage` JMX | **> ~85%** on data volume |
 | Commitlog disk | `df`, config paths | Full commitlog → write stops |
+
+Host-level disk, CPU, and memory: [§9 Host metrics](#9-host-metrics-os--node).
 
 ```bash
 nodetool compactionstats
@@ -184,12 +186,107 @@ grep -E 'hinted_handoff|hints_directory|max_hint_window' extracted/*/conf/cassan
 
 ---
 
+## 9) Host metrics (OS / node)
+
+Cassandra is sensitive to disk, memory, and clock quality. JVM metrics (§5) show heap pressure; **host metrics** show whether the node itself is healthy. Montecristo's infrastructure section flags many of these from collector bundles.
+
+### CPU and load
+
+| Metric | Live source | Collector bundle | Investigate when |
+|--------|-------------|------------------|------------------|
+| **Load average** (1 / 5 / 15 m) | `uptime`, `top` | `os/uptime.txt`, `os/top.txt` | Sustained load **>> CPU count** (see `os/lscpu.txt`) |
+| **CPU utilization** | `top`, `vmstat` | `os/vmstat.txt`, `os/ps-aux.txt` | User + system pegged with rising latency |
+| **iowait %** | `iostat -xm`, `vmstat` | `os/vmstat.txt` (wa column) | Sustained high iowait → disk bottleneck |
+| **CPU steal** (cloud) | `top`, `/proc/stat` | `os/cpuinfo`, `os/vmstat.txt` | Non-zero steal → noisy neighbor / undersized VM |
+| **Context switches** | `vmstat` | `os/vmstat.txt` | Extreme churn with high load |
+
+```bash
+uptime
+nproc
+iostat -xm 1 3
+vmstat 1 3
+grep -E 'processor|model name' os/lscpu.txt   # from bundle
+```
+
+### Memory and swap
+
+| Metric | Live source | Collector bundle | Investigate when |
+|--------|-------------|------------------|------------------|
+| **Available memory** | `free -h` | `os/free.txt` | **Available** near zero sustained |
+| **Swap used** | `free -h`, `swapon -s` | `os/free.txt`, `os/slaptop.txt` | Any swap use on a Cassandra node (avoid) |
+| **OOM / kill** | `dmesg`, `system.log` | `logs/system.log` | OOM killer or `OutOfMemoryError` |
+
+Cassandra relies on OS page cache for reads; memory pressure hurts both heap (GC) and cache effectiveness.
+
+### Disk and I/O
+
+| Metric | Live source | Collector bundle | Investigate when |
+|--------|-------------|------------------|------------------|
+| **Data volume use %** | `df -h` | `storage/df-size.txt` | **> ~85%** on `data_file_directories` mount |
+| **Inode use %** | `df -i` | `storage/df-inode.txt` | Near 100% — creates/compactions fail |
+| **Disk latency / util** | `iostat -xm` | (live only unless dstat collected) | `%util` ~100% or high `await` ms |
+| **Block devices** | `lsblk` | `os/lsblk.txt`, `os/lsblk_custom.txt`, `os-metrics/disk_device.txt` | Wrong device or shared disk with other workloads |
+| **Read-ahead / scheduler** | `blockdev`, sysfs | `os/blockdev-report.txt` | Suboptimal RA for SSD (Montecristo may flag) |
+
+Map `df` output to paths in `conf/cassandra.yaml`: `data_file_directories`, `commitlog_directory`, `saved_caches_directory`, `hints_directory`.
+
+```bash
+df -h /var/lib/cassandra
+df -i /var/lib/cassandra
+iostat -xm 1 3
+du -sh /var/lib/cassandra/data/* | sort -h | tail
+```
+
+### Network
+
+| Metric | Live source | Collector bundle | Investigate when |
+|--------|-------------|------------------|------------------|
+| **Open connections** | `ss -s`, `ss -tan` | `os/ss.txt` | Connection storms, many CLOSE_WAIT |
+| **Link errors / drops** | `ethtool -S` | `network/ethtool-*.txt` | Non-zero error counters |
+| **Inter-node latency** | `nodetool gossipinfo` | `nodetool/gossipinfo.txt` | Cross-DC latency affecting CL |
+
+### Time, kernel, and limits
+
+| Metric | Live source | Collector bundle | Investigate when |
+|--------|-------------|------------------|------------------|
+| **NTP / clock sync** | `ntpq -p`, `chronyc` | `os/date.txt`, Montecristo NTP checks | Clock drift → consistency and TTL issues |
+| **File descriptors / ulimits** | `ulimit -n` | `os/limits.conf`, `os/limits.d/` | Too low for high connection counts |
+| **Transparent huge pages** | sysfs | `os/transparent_hugepage-*.txt` | `always` on can hurt latency |
+| **NUMA layout** | `numactl --hardware` | `os/numactl-hardware.txt` | Wrong heap / disk NUMA pairing |
+
+### Kubernetes mapping
+
+On Mission Control / KinD, host metrics come from the **node and pod** observability stack rather than SSH:
+
+| Bare metal | Kubernetes + Mission Control |
+|------------|------------------------------|
+| `free`, `uptime`, `iostat` | Node exporter → Mimir (`node_cpu_*`, `node_memory_*`, `node_disk_*`) |
+| `df` on data path | PVC usage + node disk panels in Grafana |
+| `ss` / network | cAdvisor / node network metrics |
+| Per-container CPU/mem | Pod metrics in MC UI |
+
+See [K8s health snapshot §5](02-health-snapshot-kubernetes.md#5-observability-pipeline--metrics-and-logs) and mc-lab [Observability](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md).
+
+### Quick review from a collector tarball
+
+```bash
+# Per-node snapshot (after extract or under ~/ds-discovery/.../extracted/)
+cat extracted/*/os/uptime.txt extracted/*/os/free.txt
+grep -E '/var/lib/cassandra|/data|cassandra' extracted/*/storage/df-size.txt
+head extracted/*/os/vmstat.txt
+grep -i hugepage extracted/*/os/transparent_hugepage-*.txt
+```
+
+**Correlation with Cassandra metrics:** high **iowait** + high **Compaction pending bytes** → disk-bound compactions. High **load** + high **ReadStage** pending → CPU saturation. **Swap used** + rising **GC pauses** → fix memory sizing before tuning JVM.
+
+---
+
 ## Where to read each layer
 
 | Layer | When | Where |
 |-------|------|--------|
 | **Live triage** | Incident now | `nodetool`, `tpstats`, Grafana Explore ([K8s snapshot](02-health-snapshot-kubernetes.md)) |
-| **Point-in-time bundle** | Post-incident / support | Collector `metrics.jmx`, `nodetool/*.txt` in tarball |
+| **Point-in-time bundle** | Post-incident / support | Collector `metrics.jmx`, `nodetool/*.txt`, `os/*`, `storage/*` in tarball |
 | **Trend + rules** | Deep review | [Montecristo](04-montecristo-analysis.md) `metrics.db` + report |
 | **Quick log scan** | Before Montecristo | [grep-logs helper](../scripts/grep-logs.sh) on `/tmp/datastax` |
 
@@ -201,6 +298,8 @@ grep 'ClientRequest.*Read.*99thPercentile' extracted/*/metrics.jmx
 grep 'ClientRequest.*Write.*99thPercentile' extracted/*/metrics.jmx
 grep 'PendingBytes' extracted/*/metrics.jmx
 grep -E 'TotalHints|TotalHintsInProgress|HintsInProgress' extracted/*/metrics.jmx
+grep -E 'load average|Swap:|Mem:' extracted/*/os/{uptime,free}.txt
+grep -E 'Use%|/cassandra|/data' extracted/*/storage/df-size.txt
 ```
 
 Or after Montecristo extraction:
@@ -219,9 +318,10 @@ If you can only keep a handful of panels:
 2. **Timeouts** + **Unavailables** (rate)
 3. **Compaction pending bytes**
 4. **JVM heap used** + **GC pause**
-5. **Disk usage** per node / PVC
-6. **Hint backlog** — `TotalHints`, `TotalHintsInProgress`, on-disk `hints/` size
-7. **tpstats-style** pending (or blocked tasks JMX)
+5. **Disk usage** per node / PVC + **iowait** / disk latency
+6. **Host CPU & memory** — load, available RAM, swap (node exporter on K8s)
+7. **Hint backlog** — `TotalHints`, `TotalHintsInProgress`, on-disk `hints/` size
+8. **tpstats-style** pending (or blocked tasks JMX)
 
 ---
 
@@ -229,7 +329,7 @@ If you can only keep a handful of panels:
 
 | Step | Metrics use |
 |------|-------------|
-| [1a Bare-metal snapshot](01-health-snapshot-bare-metal.md) | `tpstats`, `compactionstats`, JMX families |
+| [1a Bare-metal snapshot](01-health-snapshot-bare-metal.md) | `tpstats`, `compactionstats`, JMX, OS checks (§4 storage, §9 host) |
 | [1b K8s snapshot](02-health-snapshot-kubernetes.md) | Mimir dashboards, Loki for GC/log correlation |
 | [2 Diagnostic collection](03-diagnostic-collection.md) | Full `metrics.jmx` snapshot per node |
 | [3 Montecristo](04-montecristo-analysis.md) | Parses JMX into `metrics.db`; report flags config and ops issues |
