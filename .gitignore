@@ -1,0 +1,7 @@
+ds-discovery/
+docker/optional/dse-bin.tar.gz
+*.tar.gz
+*.enc
+*_secret.key
+collector/
+*.tar.gz
