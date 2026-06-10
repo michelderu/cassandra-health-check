@@ -133,7 +133,7 @@ Grafana (when enabled):
 kubectl port-forward svc/mission-control-grafana -n mission-control 3000:80
 ```
 
-Use bundled Cassandra/HCD dashboards for:
+Use bundled Cassandra/HCD dashboards for (see [Key metrics to track](05-key-metrics.md)):
 
 - Request latency and timeouts
 - Compaction pending bytes
