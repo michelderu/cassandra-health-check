@@ -2,6 +2,8 @@
 
 Hands-on curriculum for technical specialists: understand Cassandra / HCD cluster health from **live signals**, then deepen with **diagnostic collection** and **Montecristo** analysis.
 
+![cassandra-on-fire](/cassandra-on-fire.png)
+
 ## Learning path
 
 | Step | Guide | Focus |
