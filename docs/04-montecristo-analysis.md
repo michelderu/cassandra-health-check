@@ -2,7 +2,7 @@
 
 [Montecristo](https://github.com/datastax-labs/Montecristo) turns diagnostic-collection tarballs into a structured **health discovery report**: infrastructure, configuration, compaction, repairs, schema notes, and prioritized recommendations.
 
-This training uses a **Docker image** in this repository so you do not need Java 8, Hugo, and Gradle on your laptop.
+This training uses a **Docker image** in this repository so you do not need Java 8, Hugo, Gradle, or a local [sperf](https://github.com/datastax-labs/sperf) install. The image runs **Montecristo** and **sperf** on the same collector tarballs.
 
 ---
 
@@ -12,9 +12,10 @@ This training uses a **Docker image** in this repository so you do not need Java
 2. Extracts per-node tarballs
 3. Builds a **metrics SQLite database** from `metrics.jmx` files
 4. Runs discovery rules and generates Markdown sections
-5. Serves an HTML report via **Hugo** (`/final/`)
+5. Runs **sperf** on the collector tarballs → `~/ds-discovery/<ISSUE_ID>/sperf/` ([details](06-sperf-analysis.md))
+6. Serves an HTML report via **Hugo** (`/final/`)
 
-Upstream `run.sh` also supports S3 download; the container workflow here uses **local artifacts only** (`-c`).
+Set `SKIP_SPERF=true` to skip step 5. Upstream `run.sh` also supports S3 download; the container workflow here uses **local artifacts only** (`-c`).
 
 ---
 

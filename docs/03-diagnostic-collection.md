@@ -269,9 +269,13 @@ ls /tmp/datastax/log-grep/
 
 ---
 
-## Handoff to Montecristo
+## Handoff — sperf and Montecristo
 
-Place all `*.tar.gz` (and `*.enc` if encrypted) in one directory, then follow [Montecristo analysis](04-montecristo-analysis.md):
+Place all `*.tar.gz` (and `*.enc` if encrypted) in one directory.
+
+**sperf (optional, in Docker image):** `./scripts/analyze.sh sperf my-ticket-id /tmp/datastax` — see [sperf analysis](06-sperf-analysis.md).
+
+**Montecristo:** follow [Montecristo analysis](04-montecristo-analysis.md):
 
 1. **Build** the Docker image (once per machine): `./scripts/analyze.sh build` — [details](04-montecristo-analysis.md#build-the-image)
 2. **Run** analysis on your artifact directory:

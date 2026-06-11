@@ -1,5 +1,5 @@
-# Montecristo analysis container for Cassandra / HCD / DSE diagnostic tarballs.
-# Builds Montecristo from source with Java 8 and runtime dependencies (hugo, jq, zip).
+# Montecristo + sperf analysis container for Cassandra / HCD / DSE diagnostic tarballs.
+# Builds Montecristo from source; bundles sperf for CLI summaries on ds-collector bundles.
 #
 # Usage:
 #   docker build -t montecristo -f docker/Dockerfile docker/
@@ -13,6 +13,7 @@
 FROM ubuntu:22.04
 
 ARG MONTECRISTO_REF=main
+ARG SPERF_REF=v0.6.20
 ENV DEBIAN_FRONTEND=noninteractive \
     DS_DISCOVERY_DIR=/ds-discovery \
     JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
@@ -26,10 +27,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-8-jdk \
     openssl \
     python3 \
+    python3-pip \
     tar \
     unzip \
     zip \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir "git+https://github.com/datastax-labs/sperf.git@${SPERF_REF}"
 
 WORKDIR /opt/montecristo-src
 
@@ -57,8 +61,8 @@ RUN chmod +x /tmp/build-montecristo.sh /tmp/patch-logregex.sh \
 
 ENV PATH="/opt/montecristo/montecristo/bin:${PATH}"
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY entrypoint.sh prepare-sperf-layout.sh run-sperf.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/prepare-sperf-layout.sh /usr/local/bin/run-sperf.sh
 
 WORKDIR /ds-discovery
 EXPOSE 1313
