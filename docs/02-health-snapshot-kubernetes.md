@@ -133,14 +133,18 @@ Grafana (when enabled):
 kubectl port-forward svc/mission-control-grafana -n mission-control 3000:80
 ```
 
-Use bundled Cassandra/HCD dashboards for (see [Key metrics to track](05-key-metrics.md)):
+Open **Mission Control Cluster** and **Mission Control System & Node Metrics** in Grafana (panel map and triage flow in [Key metrics — §10](05-key-metrics.md#10-mission-control-dashboard-map)):
 
-- Request latency and timeouts
-- Compaction pending bytes
-- JVM heap and GC
-- Disk usage per pod
+| Check first | Grafana panels |
+|-------------|----------------|
+| Availability | **Nodes Up/Down**, **Client Timeouts**, **Dropped Messages** |
+| Latency / load | **Coordinator Read/Write Latency**, **Requests Served** |
+| Writes / disk | **Memtable Flusher TP Stats**, **Pending Compactions**, **Disk Used**, **CPU IOWait** |
+| Reads | **SSTables Per Read**, **Tombstones Scanned** |
+| Consistency | **Total Hints**, **Hints Failed**, **Repairs Completed** |
+| JVM | **JVM G1 Old Gen**, **JVM GC Old Gen** |
 
-Ad-hoc investigation: **Explore** → Mimir or Loki.
+Ad-hoc investigation: **Explore** → Mimir or Loki (GC pauses, `system.log` errors).
 
 ---
 

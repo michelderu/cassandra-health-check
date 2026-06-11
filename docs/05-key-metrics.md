@@ -4,6 +4,45 @@ A practical cheat sheet for Cassandra / HCD health: what to watch, where to find
 
 You do not need every JMX bean — focus on **latency**, **errors**, **backpressure**, **compaction**, **hints**, **host resources**, and **JVM**.
 
+**Three layers:** use **nodetool / OS** for live triage (§1–§9), **Mission Control Grafana** dashboards on K8s ([§10](#10-mission-control-dashboard-map)), and **collector + Montecristo** for point-in-time or trend review ([Where to read each layer](#where-to-read-each-layer)).
+
+On Mission Control, panel names often include `$by` (per node/table/keyspace) and `$rate` (per-minute rate). Combine both for per-entity trends.
+
+---
+
+## Quick triage flow
+
+Use this sequence during an incident (adapt for bare metal with nodetool where Grafana is unavailable):
+
+1. **Availability** — Nodes Up/Down ([§6](#6-cluster-topology-and-repair)), **Dropped Messages**, **Client Timeouts** and **Unavailables** ([§2](#2-client-errors-and-sla-leaks)). Target: all nodes **UN**, error rates ~0.
+2. **Latency up?** — Read/Write p99 ([§1](#1-client-request-latency-most-important)), GC pauses ([§5](#5-jvm-and-gc)), pending compactions ([§4](#4-compaction-and-disk)), **SSTables per read** ([§7](#7-per-table-signals-hot-spots)).
+3. **Write issues?** — **Memtable Flusher** / **MutationStage** pending ([§3](#3-thread-pools--backpressure-nodetool-tpstats)), disk IO and iowait ([§9](#9-host-metrics-os--node)), pending compactions.
+4. **Read timeouts?** — Tombstones scanned, SSTables per read, GC, IO wait.
+5. **Inconsistency risk?** — Repair progress ([§6](#6-cluster-topology-and-repair)), hints backlog and hint delivery failures ([§8](#8-hints-hinted-handoff)).
+
+Always correlate latency with GC, compaction, disk IO, and network before tuning CQL or JVM.
+
+---
+
+## Suggested targets
+
+Use **planning** numbers for capacity reviews; **incident** numbers when triaging an outage.
+
+| Signal | Planning (steady state) | Incident (investigate) |
+|--------|-------------------------|-------------------------|
+| Nodes up | 100% | Any unexpected down node |
+| Client timeouts / unavailables / dropped messages | ~0 sustained | Any sustained non-zero under normal load |
+| Read/Write latency p99 | Within SLA | Climbs while load is flat |
+| GC pause (young/old) | Typically **< 200 ms** | Frequent pauses **> 200–500 ms** |
+| JVM Old Gen / heap | **< ~70%** of max sustained | Rising Old Gen + long GC pauses |
+| CPU busy | **< 70–80%** sustained | Pegged with rising latency |
+| CPU iowait | **< ~5%** sustained | High with compaction/disk backlog |
+| Disk utilization (data + compaction headroom) | **< 60–70%** for growth/repair | **> ~85%** on data or commitlog mount |
+| Pending compactions | Low watermark returns | Grows linearly or never drains |
+| SSTables per read / tombstones scanned | Low baseline | Sudden or sustained spike |
+| Hints on disk / total hints | Drains after outage | Grows while all nodes **UN** |
+| Full cluster repair | Within RPO (e.g. every 7–14 days) | Stalled or failing segments |
+
 ---
 
 ## 1) Client request latency (most important)
@@ -12,9 +51,10 @@ These measure how long the coordinator spends serving CQL reads and writes. Late
 
 | Metric | JMX (`metrics.jmx`) | Grafana / Mimir (typical) | Investigate when |
 |--------|------------------------|---------------------------|------------------|
-| Read latency p50 / p95 / **p99** | `ClientRequest`, scope `Read` or `Read-ONE`, name `Latency` | `cassandra_client_request_latency` (by quantile) | p99 climbs while load is flat, or ms → tens/hundreds of ms |
-| Write latency p50 / p95 / **p99** | `ClientRequest`, scope `Write`, name `Latency` | same family, `write` | Same as reads; often coupled with compaction or disk |
-| Range read latency | `ClientRequest`, scope `RangeSlice`, name `Latency` | dashboard “range” / scan panels | High on wide partition scans or large IN queries |
+| Read latency p50 / p95 / **p99** | `ClientRequest`, scope `Read` or `Read-ONE`, name `Latency` | **Coordinator Read Latency** / `$by` / `$rate` | p99 climbs while load is flat, or ms → tens/hundreds of ms |
+| Write latency p50 / p95 / **p99** | `ClientRequest`, scope `Write`, name `Latency` | **Coordinator Write Latency** / `$by` / `$rate` | Same as reads; often coupled with compaction or disk |
+| Range read latency | `ClientRequest`, scope `RangeSlice`, name `Latency` | **Coordinator Range Read Latency** / `$by` / `$rate` | High on wide partition scans or large IN queries |
+| Request throughput | `ClientRequest` → `Latency` Count / rates | **Requests Served** / `$by` / `$rate` | Dip with steady client demand → contention or partial outage |
 | LWT (CAS) latency | `CASRead`, `CASWrite`, `CASPrepare` | if exposed | Elevated during contention on lightweight transactions |
 
 **Units:** JMX latencies are usually **microseconds** (µs). Divide by 1000 for milliseconds.
@@ -40,6 +80,9 @@ Latency can look fine while requests fail or time out.
 | **Unavailables** | `ClientRequest` → `Unavailables` | Not enough replicas alive for CL |
 | **Failures** | `ClientRequest` → `Failures` | Unexpected errors on the request path |
 | **UnfinishedCommit** | write path | Possible hint / write concern issues — see [§8](#8-hints-hinted-handoff) |
+| **Dropped messages** | `DroppedMessage` (by verb) | Overload or timeouts on inter-node messaging |
+
+**Mission Control panels:** **Client Timeouts** / `$by` / `$rate`, **Dropped Messages** / `$rate`, **Clients Connected** / `$by` (spikes may precede overload).
 
 Track **Count** (total since restart) and **OneMinuteRate** / **FiveMinuteRate** (recent trend). Any sustained non-zero rate under normal load warrants investigation.
 
@@ -54,13 +97,14 @@ nodetool status      # UN vs DN / UJ
 
 | Pool | What it tells you |
 |------|-------------------|
-| **Native-Transport-Requests** | Client connection pressure |
+| **Native-Transport-Requests** | Client connection pressure — correlates with **Clients Connected** panel |
 | **ReadStage** | Local read execution queue |
 | **MutationStage** | Write / mutation queue |
+| **MemtableFlushWriter** | Memtable flush backlog — MC: **Memtable Flusher TP Stats**, **Flushes Pending** |
 | **CompactionExecutor** | Compactions waiting for CPU/disk |
 | **HintsDispatcher** | Hint delivery backlog — see [§8](#8-hints-hinted-handoff) |
 
-Watch **Pending** and **Blocked** — not just **Active**. Occasional pending is normal; sustained hundreds/thousands with rising latency is not.
+Watch **Pending** and **Blocked** — not just **Active**. Occasional pending is normal; sustained hundreds/thousands with rising latency is not. Write-path triage: check **Memtable Flusher** and **MutationStage** before blaming compaction alone.
 
 JMX mirror: `ThreadPools` → `CurrentlyBlockedTasks`, `PendingTasks`, `ActiveTasks` per scope.
 
@@ -71,10 +115,12 @@ JMX mirror: `ThreadPools` → `CurrentlyBlockedTasks`, `PendingTasks`, `ActiveTa
 | Metric | Source | Investigate when |
 |--------|--------|------------------|
 | Pending compaction tasks | `nodetool compactionstats` | Many tasks stuck; one huge task |
-| Pending compaction bytes | JMX `Compaction` → `PendingBytes` | Grows without clearing |
-| Completed compaction rate | JMX `Compaction` → `Completed` | Drops to zero under write load |
+| Pending compaction bytes | JMX `Compaction` → `PendingBytes` | Grows without clearing — MC: **Pending Compactions**/node/`$rate` |
+| Completed compaction rate | JMX `Compaction` → `Completed` | Drops to zero under write load — MC: **Completed Compactions**, **Compactions**/`$rate` |
+| Compacted throughput | JMX `Compaction` → `BytesCompacted` | Spikes after heavy writes or repairs — MC: **Compacted Bytes**/node/`$rate` |
+| Live data size | JMX `ColumnFamily` / table stats | Growth vs capacity — MC: **Live Data Size**, **Live Disk Space Used** / `$by` |
 | SSTable count per table | `nodetool tablestats` | Grows without compaction keeping pace |
-| Disk used / free | `df`, PVC usage, `Storage` JMX | **> ~85%** on data volume |
+| Disk used / free | `df`, PVC usage, `Storage` JMX | **> ~85%** incident; plan headroom **< 60–70%** ([targets](#suggested-targets)) |
 | Commitlog disk | `df`, config paths | Full commitlog → write stops |
 
 Host-level disk, CPU, and memory: [§9 Host metrics](#9-host-metrics-os--node).
@@ -91,8 +137,9 @@ nodetool tablestats
 
 | Metric | Source | Investigate when |
 |--------|--------|------------------|
-| Heap used / max | JMX `memory` / `GarbageCollector` | Near max sustained |
-| GC pause time | `logs/gc.log`, GC JMX | Frequent pauses > 200–500 ms |
+| Heap used / max | JMX `memory` / `GarbageCollector` | Near max sustained; Old Gen **> ~70%** sustained → tuning |
+| G1 pool churn | JMX `memory` pools | Eden/Survivor churn — MC: **JVM G1 Eden/Old Gen/Survivor** used/node |
+| GC pause time | `logs/gc.log`, GC JMX | Target **< 200 ms** typical; investigate **> 200–500 ms** |
 | CMS / G1 old-gen time | GC logs | `GC overhead limit exceeded` in system.log |
 
 ```bash
@@ -100,7 +147,7 @@ grep -E 'GC|Pause' logs/gc.log | tail -20   # from collector bundle
 grep -E 'OutOfMemory|GC overhead' logs/system.log
 ```
 
-Mission Control / Grafana: **JVM heap**, **GC pause**, **allocation rate** panels.
+Mission Control / Grafana: **JVM GC Young Gen** / **Old Gen** / **Old Gen Count** /node/`$rate`, plus heap pool panels above. Correlate GC spikes with read/write p99 in Loki (`gc.log`) or MC charts.
 
 ---
 
@@ -108,12 +155,20 @@ Mission Control / Grafana: **JVM heap**, **GC pause**, **allocation rate** panel
 
 | Signal | Command / metric | Concern |
 |--------|------------------|---------|
-| Node state | `nodetool status` | Non-**UN** nodes |
+| Node state | `nodetool status` | Non-**UN** nodes — MC: **Nodes Up**, **Nodes Down** |
 | Ownership skew | `nodetool describering` | Token imbalance after expand/shrink |
-| Streaming | `nodetool netstats` | Stuck streams during rebuild |
-| Repair | JMX `Repair` / `Validation` | Failed or never-completing repair |
+| Streaming | `nodetool netstats`, JMX `Streaming` | Stuck streams — MC: **Streaming Incoming/Outgoing Bytes** / `$by`/sec |
+| Repair (scheduled) | JMX `Repair` / `Validation` | Failed or never-completing repair — MC: **Repairs Completed** / `$by`/`$rate` |
+| Read repair | JMX `ReadRepair` | Surges suggest drift — MC: **Read Repair Requests** / `$by`/`$rate` |
+| Inter-DC latency | JMX `Messaging`, `<DC>-Latency` | High cross-DC wait affects CL — see [inter-DC](#inter-datacenter-messaging) |
+
+**Repair RPO:** complete a full cluster repair within your policy window (e.g. every 7 or 14 days). Track **Repairs Completed** rate against that goal.
 
 See [§8 Hints](#8-hints-hinted-handoff) when a node was down or flapping.
+
+### Inter-datacenter messaging
+
+Inter-DC latency metrics require `cross_node_timeout: true` in `cassandra.yaml`. JMX: `org.apache.cassandra.metrics:type=Messaging,name=<DC-Name>-Latency`. In Mimir/Grafana these become names like `org_apache_cassandra_metrics_messaging_dc1_latency`. No bundled MC dashboard — build a custom panel per peer DC.
 
 ---
 
@@ -121,12 +176,14 @@ See [§8 Hints](#8-hints-hinted-handoff) when a node was down or flapping.
 
 When you know the keyspace/table:
 
-| Metric | Source |
-|--------|--------|
-| Read / write latency | `tablestats` → `Read latency`, `Write latency` |
-| Live SSTables / disk | `tablestats` → space used |
-| Tombstones per read | `tablestats` → `Tombstone per read` (high → compaction or TTL issue) |
-| Partition size | `nodetool tablehistograms` (if enabled) |
+| Metric | Source | MC panel (typical) |
+|--------|--------|-------------------|
+| Read / write request rate | JMX `ColumnFamily` rates | **Read Requests/Table**, **Write Requests/Table** |
+| Read / write latency | `tablestats` → `Read latency`, `Write latency` | Per-table latency in Explore |
+| SSTables per read | JMX / table stats | **SSTables Per Read** / `$by` |
+| Tombstones per read | `tablestats` → `Tombstone per read` | **Tombstones Scanned** / `$by` |
+| Live SSTables / disk | `tablestats` → space used | **Live Disk Space Used** / `$by` |
+| Partition size | `nodetool tablehistograms` (if enabled) | — |
 
 ---
 
@@ -138,7 +195,9 @@ When a replica is temporarily unreachable, coordinators store **hints** — defe
 
 | Metric / signal | Source | Investigate when |
 |-----------------|--------|------------------|
-| **TotalHints** | JMX `Storage` → `TotalHints` | Count rising while all nodes are **UN** |
+| **TotalHints** | JMX `Storage` → `TotalHints` | Count rising while all nodes are **UN** — MC: **Total Hints** |
+| **Hints on disk** | JMX / filesystem | MC: **Hints on Disk** / `$by`/`$rate` |
+| **Hint delivery** | JMX hint service counters | MC: **Hints Succeeded**, **Hints Failed**, **Hint Delays** / `$by`/`$rate` |
 | **TotalHintsInProgress** | JMX `Storage` → `TotalHintsInProgress` | Stuck > 0 for a long time after node recovered |
 | **HintsInProgress** | JMX `StorageProxy` → `HintsInProgress` | Same — active replay not finishing |
 | **HintsDispatcher** pending / blocked | `nodetool tpstats`, JMX `ThreadPools` scope `HintsDispatcher` | Sustained **Pending** or **Blocked** |
@@ -260,9 +319,11 @@ On Mission Control / KinD, host metrics come from the **node and pod** observabi
 
 | Bare metal | Kubernetes + Mission Control |
 |------------|------------------------------|
-| `free`, `uptime`, `iostat` | Node exporter → Mimir (`node_cpu_*`, `node_memory_*`, `node_disk_*`) |
-| `df` on data path | PVC usage + node disk panels in Grafana |
-| `ss` / network | cAdvisor / node network metrics |
+| `free`, `uptime`, `iostat` | **Mission Control System & Node Metrics**: **CPU Busy**, **CPU Basic**, **Memory Used**, **Memory Basic** |
+| CPU breakdown | **CPU User**, **CPU System**, **CPU IOWait**, **CPU Other** |
+| Disk IO | **Disk Rate per second**, **Disk IOPS** |
+| Network | **Network Traffic Basic**, **Network Packets** |
+| `df` on data path | **Used Root FS**, **Disk Used** + PVC usage |
 | Per-container CPU/mem | Pod metrics in MC UI |
 
 See [K8s health snapshot §5](02-health-snapshot-kubernetes.md#5-observability-pipeline--metrics-and-logs) and mc-lab [Observability](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md).
@@ -278,6 +339,46 @@ grep -i hugepage extracted/*/os/transparent_hugepage-*.txt
 ```
 
 **Correlation with Cassandra metrics:** high **iowait** + high **Compaction pending bytes** → disk-bound compactions. High **load** + high **ReadStage** pending → CPU saturation. **Swap used** + rising **GC pauses** → fix memory sizing before tuning JVM.
+
+---
+
+## 10) Mission Control dashboard map
+
+Mission Control ships two primary Grafana dashboards for database health:
+
+| Dashboard | Use for |
+|-----------|---------|
+| **Mission Control Cluster** | Cassandra JMX: latency, errors, compaction, hints, repair, JVM |
+| **Mission Control System & Node Metrics** | Host/node: CPU, memory, disk IO, network (node exporter) |
+
+### KPI → panel → nodetool / JMX
+
+| KPI | MC panel(s) | nodetool / JMX / bundle |
+|-----|-------------|-------------------------|
+| Nodes up/down | **Nodes Up**, **Nodes Down** | `nodetool status` |
+| Request throughput | **Requests Served** / `$by` / `$rate` | `ClientRequest` latency Count |
+| Read/write/range latency | **Coordinator Read/Write/Range Read Latency** / `$by` / `$rate` | `ClientRequest` → `Latency` percentiles |
+| Client errors | **Client Timeouts**, **Dropped Messages** / `$rate` | `Timeouts`, `Unavailables`, `DroppedMessage` |
+| Client connections | **Clients Connected** / `$by` | `tpstats` → Native-Transport-Requests |
+| Thread pool backlog | **Memtable Flusher TP Stats**, **Flushes Pending** | `nodetool tpstats` (all pools) |
+| Compaction backlog | **Pending Compactions**/node/`$rate` | `compactionstats`, `PendingBytes` |
+| Compaction throughput | **Completed Compactions**, **Compacted Bytes** | JMX `Compaction` |
+| Live data / disk | **Live Data Size**, **Live Disk Space Used** | `tablestats`, `df` / `storage/df-size.txt` |
+| Read efficiency | **SSTables Per Read**, **Tombstones Scanned** | `tablestats`, per-table JMX |
+| Table hotspots | **Read/Write Requests/Table** | JMX `ColumnFamily` rates |
+| Hints | **Total Hints**, **Hints on Disk**, **Hints Succeeded/Failed/Delays** | §8 JMX + `du` on `hints/` |
+| Streaming | **Streaming Incoming/Outgoing Bytes** | `nodetool netstats` |
+| Repair | **Repairs Completed**, **Read Repair Requests** | JMX `Repair`, `ReadRepair` |
+| JVM / GC | **JVM G1** pools, **JVM GC** young/old/count | `gc.log`, GC JMX |
+| Host CPU/memory/disk | **CPU Busy**, **Memory Basic**, **Disk Used**, **Disk IOPS** | §9 `os/*`, `storage/*` |
+
+### Other monitoring
+
+| Topic | Notes |
+|-------|--------|
+| **TLS certificate expiry** | UMS Certificate Expiry Detector (production MC deployments) — prevents handshake failures from expired certs |
+| **Alerting** | Define alerts on timeouts, nodes down, disk, and hint backlog — see [DataStax metrics and alerts](https://docs.datastax.com/en/planning/dse/metrics-alerts.html) |
+| **Logs** | Use Loki in MC/Grafana to correlate GC pauses and `system.log` errors with metric spikes ([K8s snapshot §5](02-health-snapshot-kubernetes.md#5-observability-pipeline--metrics-and-logs)) |
 
 ---
 
@@ -312,16 +413,17 @@ grep 'ClientRequest.*Latency.*99thPercentile' ~/ds-discovery/<issue>/extracted/*
 
 ## Minimum dashboard set (Grafana / Mission Control)
 
-If you can only keep a handful of panels:
+If you can only keep a handful of panels (names from **Mission Control Cluster** + **System & Node Metrics**):
 
-1. **Read p99** and **Write p99** (cluster + per DC)
-2. **Timeouts** + **Unavailables** (rate)
-3. **Compaction pending bytes**
-4. **JVM heap used** + **GC pause**
-5. **Disk usage** per node / PVC + **iowait** / disk latency
-6. **Host CPU & memory** — load, available RAM, swap (node exporter on K8s)
-7. **Hint backlog** — `TotalHints`, `TotalHintsInProgress`, on-disk `hints/` size
-8. **tpstats-style** pending (or blocked tasks JMX)
+1. **Nodes Up** / **Nodes Down**
+2. **Coordinator Read Latency** and **Coordinator Write Latency** p99 / `$by`
+3. **Client Timeouts** + **Dropped Messages** / `$rate` (+ **Unavailables** in Explore if not charted)
+4. **Requests Served** / `$rate` (throughput dip detector)
+5. **Pending Compactions** + **Compacted Bytes** / `$rate`
+6. **JVM G1 Old Gen** used + **JVM GC Old Gen** pause / `$rate`
+7. **Live Data Size** + **Disk Used** (cluster) + **CPU IOWait** (node dashboard)
+8. **Total Hints** + **Hints Failed** / `$rate` + **Memtable Flusher TP Stats**
+9. **SSTables Per Read** + **Tombstones Scanned** (when read latency is the symptom)
 
 ---
 
@@ -330,7 +432,7 @@ If you can only keep a handful of panels:
 | Step | Metrics use |
 |------|-------------|
 | [1a Bare-metal snapshot](01-health-snapshot-bare-metal.md) | `tpstats`, `compactionstats`, JMX, OS checks (§4 storage, §9 host) |
-| [1b K8s snapshot](02-health-snapshot-kubernetes.md) | Mimir dashboards, Loki for GC/log correlation |
+| [1b K8s snapshot](02-health-snapshot-kubernetes.md) | MC Cluster + System & Node dashboards, Loki ([§10](#10-mission-control-dashboard-map)) |
 | [2 Diagnostic collection](03-diagnostic-collection.md) | Full `metrics.jmx` snapshot per node |
 | [3 Montecristo](04-montecristo-analysis.md) | Parses JMX into `metrics.db`; report flags config and ops issues |
 
@@ -339,4 +441,5 @@ If you can only keep a handful of panels:
 ## Related reading
 
 - Apache Cassandra metrics: [Metric types](https://cassandra.apache.org/doc/latest/cassandra/operating/metrics.html) (upstream)
-- mc-lab [Observability](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md) — Mission Control metrics pipeline
+- DataStax [Important metrics and alerts](https://docs.datastax.com/en/planning/dse/metrics-alerts.html) — KPI thresholds and alerting guidance
+- mc-lab [Observability](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md) — Mission Control metrics pipeline on KinD

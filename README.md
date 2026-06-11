@@ -10,7 +10,7 @@ Hands-on curriculum for technical specialists: understand Cassandra / HCD cluste
 |------|--------|--------|
 | **1a** | [Health snapshot — VM / bare metal](docs/01-health-snapshot-bare-metal.md) | `nodetool`, logs, disk, OS — no extra tooling |
 | **1b** | [Health snapshot — Kubernetes / Mission Control](docs/02-health-snapshot-kubernetes.md) | CRs, pods, MC UI, Mimir/Loki |
-| **Ref** | [Key metrics to track](docs/05-key-metrics.md) | Latencies, errors, compaction, JVM — cheat sheet |
+| **Ref** | [Key metrics to track](docs/05-key-metrics.md) | Triage flow, thresholds, nodetool/JMX, Mission Control panels |
 | **2** | [Diagnostic collection](docs/03-diagnostic-collection.md) | [ds-collector](https://github.com/datastax/diagnostic-collection) bundles |
 | **3** | [Montecristo analysis](docs/04-montecristo-analysis.md) | Containerized [Montecristo](https://github.com/datastax-labs/Montecristo) reports |
 

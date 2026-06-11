@@ -138,7 +138,7 @@ nodetool netstats
 
 Or attach with `jconsole` / `nodetool sjk` if available.
 
-Useful JMX families (names vary by version) — see [Key metrics to track](05-key-metrics.md) for a full cheat sheet:
+Useful JMX families (names vary by version) — see [Key metrics to track](05-key-metrics.md) for the [triage flow](05-key-metrics.md#quick-triage-flow), [thresholds](05-key-metrics.md#suggested-targets), and full cheat sheet:
 
 - `org.apache.cassandra.metrics:type=ClientRequest,*` — latencies and timeouts.
 - `org.apache.cassandra.metrics:type=Compaction,*` — pending bytes, completed tasks.
