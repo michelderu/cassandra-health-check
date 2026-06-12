@@ -1,5 +1,5 @@
 # Single-node Cassandra for practicing ds-collector locally (Docker mode).
-# See docs/03-diagnostic-collection.md — "Local lab — test Cassandra container".
+# Local training Cassandra — see docs/03-local-lab.md.
 services:
   cassandra:
     image: cassandra:5.0

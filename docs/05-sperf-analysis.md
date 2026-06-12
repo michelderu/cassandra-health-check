@@ -2,7 +2,7 @@
 
 [sperf](https://github.com/datastax-labs/sperf) summarizes GC, StatusLogger, config diffs, and table hotspots from **ds-collector** bundles. It is **bundled in the analysis Docker image** — no local install required.
 
-Use it after [diagnostic collection](03-diagnostic-collection.md), before or with [Montecristo](04-montecristo-analysis.md).
+Use it after [diagnostic collection](04-diagnostic-collection.md), before or with [Montecristo](06-montecristo-analysis.md).
 
 Official reference: [sperf user documentation](https://datastax-labs.github.io/sperf/).
 
@@ -10,7 +10,7 @@ Official reference: [sperf user documentation](https://datastax-labs.github.io/s
 
 ## Input: collector tarballs
 
-Point the container at the same directory as Montecristo: `*.tar.gz` from ds-collector (e.g. `/tmp/datastax/`).
+Point the container at the same directory as Montecristo: `*.tar.gz` from ds-collector (e.g. `./diagnostics/`).
 
 sperf expects a legacy `nodes/<hostname>/` tree internally. The image **extracts tarballs and stages that layout automatically** — you do not extract or install sperf on your laptop.
 
@@ -22,13 +22,9 @@ sperf expects a legacy `nodes/<hostname>/` tree internally. The image **extracts
 ./scripts/analyze.sh build   # once — installs sperf in the image
 
 # sperf only (reads /artifacts/*.tar.gz inside the container)
-./scripts/analyze.sh sperf docker-lab /tmp/datastax
-ls ~/ds-discovery/docker-lab/sperf/
-
-# Full pipeline: Montecristo + sperf + Hugo
-./scripts/analyze.sh run docker-lab /tmp/datastax
-# Hugo: http://localhost:1313/final/
-# sperf: ~/ds-discovery/docker-lab/sperf/
+# Use an ISSUE_ID instead of 'docker-lab' to track tickets: ./scripts/analyze.sh sperf ISSUE_ID ./diagnostics
+./scripts/analyze.sh sperf docker-lab ./diagnostics
+ls ./ds-discovery/docker-lab/sperf/
 ```
 
 Skip sperf on a full run: `SKIP_SPERF=true ./scripts/analyze.sh run …`
@@ -37,7 +33,7 @@ Skip sperf on a full run: `SKIP_SPERF=true ./scripts/analyze.sh run …`
 
 ## Output files
 
-Under `~/ds-discovery/<ISSUE_ID>/sperf/`:
+Under `./ds-discovery/<ISSUE_ID>/sperf/` (repo root, gitignored):
 
 | File | Command |
 |------|---------|
@@ -58,17 +54,8 @@ Under `~/ds-discovery/<ISSUE_ID>/sperf/`:
 
 ---
 
-## Training exercise
-
-1. Collect a [Docker lab bundle](03-diagnostic-collection.md).
-2. `./scripts/analyze.sh sperf training-1 /tmp/datastax`
-3. Read `summary.txt` and `core-diag.txt`.
-4. Run `./scripts/analyze.sh run training-1 /tmp/datastax` and compare with Montecristo.
-
----
-
 ## Related
 
 - [sperf on GitHub](https://github.com/datastax-labs/sperf)
-- [Key metrics](05-key-metrics.md) — correlate GC, tpstats, tombstones
-- [Montecristo analysis](04-montecristo-analysis.md)
+- [Key metrics](07-key-metrics.md) — correlate GC, tpstats, tombstones
+- [Montecristo analysis](06-montecristo-analysis.md)

@@ -36,18 +36,9 @@ No sensitive application data (row contents) are collected. An `audit.log` lists
 
 Practice the collector on your workstation before touching production or KinD. A single-node Cassandra container exercises the **Docker** code path (`use_docker="true"`) — no SSH or kubeconfig required.
 
-### 1) Start Cassandra
+**Prerequisite:** complete [Local lab](03-local-lab.md) (start container, optional `./scripts/lab-stress.sh`).
 
-From this repository:
-
-```bash
-docker compose -f docker/docker-compose.cassandra.yml up -d
-docker compose -f docker/docker-compose.cassandra.yml ps
-```
-
-Wait until the container is **healthy** (or `docker exec ds-collector-test-cassandra nodetool status` shows one **UN** node). First start can take 1–2 minutes.
-
-### 2) Extract the collector bundle
+### 1) Extract the collector bundle
 
 ```bash
 tar -xvf ds-collector.GENERIC-*.tar.gz
@@ -55,19 +46,23 @@ cd collector
 chmod +x ds-collector
 ```
 
-### 3) Configure for Docker
+### 2) Configure for Docker
 
-In `collector.conf`, enable Docker mode and keep artifacts local:
+From the **repository root**, create the collector output directory. Artifacts are written to `./diagnostics/` (gitignored), not `/tmp/datastax`.
 
 ```bash
+mkdir -p diagnostics
+cd collector
+cp collector.conf collector.conf.bak
 sed -i 's/^#use_docker=.*/use_docker="true"/' collector.conf
 sed -i 's/^#skipSudo=.*/skipSudo="true"/' collector.conf
 sed -i 's/^#?keepArtifact=.*/keepArtifact="true"/' collector.conf
+sed -i "s|^#?bastionBaseDir=.*|bastionBaseDir=\"$(cd .. && pwd)/diagnostics\"|" collector.conf
 ```
 
 `skipS3` is already `true` in the training bundle.
 
-### 4) Test and collect (single node)
+### 3) Test and collect (single node)
 
 Use the **container name** as the contact node and `-d` so discovery does not look for peers that do not exist:
 
@@ -79,35 +74,13 @@ Use the **container name** as the contact node and `-d` so discovery does not lo
 ./ds-collector -X -d -f collector.conf -n ds-collector-test-cassandra
 ```
 
-Artifacts appear under `/tmp/datastax/` (or `bastionBaseDir` if you changed it):
+Artifacts appear under `./diagnostics/`:
 
 ```bash
-ls -lh /tmp/datastax/*.tar.gz
+ls -lh ../diagnostics/*.tar.gz    # from collector/
+# or, from repo root:
+ls -lh ./diagnostics/*.tar.gz
 ```
-
-### 5) Analyze and tear down
-
-After [step 4](#4-test-and-collect-single-node) produced tarballs under `/tmp/datastax/`, run [Montecristo analysis](04-montecristo-analysis.md) (build the image once, then analyze):
-
-```bash
-cd ..   # repo root
-./scripts/analyze.sh build                    # first time only — see doc 04
-./scripts/analyze.sh run docker-lab /tmp/datastax
-```
-
-Montecristo writes to `~/ds-discovery/docker-lab/` and serves the report at **http://localhost:1313/final/**. For encrypted artifacts, Hugo port conflicts, DSE builds, and troubleshooting, see [Montecristo analysis — Run analysis](04-montecristo-analysis.md#run-analysis).
-
-Tear down the lab Cassandra container when finished:
-
-```bash
-docker compose -f docker/docker-compose.cassandra.yml down
-```
-
-| Tip | Detail |
-|-----|--------|
-| **Run on the host** | Do not run `ds-collector` inside the Cassandra container — use your laptop as the jump box with Docker socket access |
-| **Missing OS tools** | The stock image may lack some utilities the collector probes for; training runs usually still produce a usable tarball |
-| **Multi-node Docker** | Add more services to the compose file; drop `-d` once every node is reachable |
 
 ---
 
@@ -141,7 +114,7 @@ Resolve any `NOTOK` lines before collecting (see upstream [TROUBLESHOOTING.md](h
 ./ds-collector -X -f collector.conf -n <CASSANDRA_CONTACT_NODE>
 ```
 
-Artifacts land under the configured base directory (default `/tmp/datastax/`) as:
+Artifacts land under the configured `bastionBaseDir` (training default: `./diagnostics/`) as:
 
 ```
 <hostname>_artifacts_<timestamp>.tar.gz
@@ -203,8 +176,8 @@ The collector discovers peer pods via nodetool/gossip and collects from each.
 4. Copy the output directory to your analysis machine if different from the jump box.
 
 ```bash
-# After collection
-ls /tmp/datastax/*.tar.gz
+# After collection (repo root)
+ls ./diagnostics/*.tar.gz
 ```
 
 ---
@@ -217,17 +190,10 @@ Some builds ship with an encryption key (`<PROJECT_ID>_secret.key`). Place it ne
 
 ## Quality checks before analysis
 
-| Check | Why |
-|-------|-----|
-| One tarball per node | Missing nodes = blind spots |
-| Tarballs non-zero size | Failed collection |
-| Timestamps align | Same incident window |
-| Same cluster name in all | Mixed clusters break Montecristo |
-
 Quick peek inside one tarball:
 
 ```bash
-tar -tzf /tmp/datastax/node1_artifacts_*.tar.gz | head -30
+tar -tzf ./diagnostics/node1_artifacts_*.tar.gz | head -30
 ```
 
 Expect paths like `nodetool/`, `conf/`, `logs/`, `metrics.jmx`.
@@ -236,54 +202,23 @@ Expect paths like `nodetool/`, `conf/`, `logs/`, `metrics.jmx`.
 
 ## Quick log triage (optional)
 
-Right after [step 4](#4-test-and-collect-single-node) — **before** [Montecristo](04-montecristo-analysis.md) — you can grep `system.log` for a fast sanity check. Tarballs must be extracted first (`grep` cannot read inside `*.tar.gz` directly).
+Right after collection, you can grep `system.log` for a fast sanity check. Tarballs must be extracted first (`grep` cannot read inside `*.tar.gz` directly).
 
 Extract collector output, then grep:
 
 ```bash
-mkdir -p /tmp/log-triage/extracted
-for t in /tmp/datastax/*_artifacts_*.tar.gz; do
-  tar -tzf "$t" | grep -E '/logs/.+' | tar -xzf "$t" -C /tmp/log-triage/extracted -T -
+mkdir -p ./diagnostics/log-triage
+for t in ./diagnostics/*_artifacts_*.tar.gz; do
+  tar -tzf "$t" | grep -E '/logs/.+' | tar -xzf "$t" -C ./diagnostics/log-triage -T -
 done
-cd /tmp/log-triage/extracted
+cd ./diagnostics/log-triage
 
-find . -name "system.log*" -print0 | xargs -0 grep -e 'ERROR' | grep -v 'tombstone cells for query' > ../errors.log
-find . -name "system.log*" -print0 | xargs -0 grep -e 'WARN'  | grep -v 'tombstone cells for query' > ../warnings.log
-find . -name "system.log*" -print0 | xargs -0 grep -e 'gc'    | grep -v 'tombstone cells for query' > ../gc-from-system.log
-find . -name "system.log*" -print0 | xargs -0 grep -e 'ERROR\|WARN' | grep 'tombstone cells for query' > ../errors-tombstones.log
+find . -name "system.log*" -print0 | xargs -0 grep -e 'ERROR' | grep -v 'tombstone cells for query' > errors.log
+find . -name "system.log*" -print0 | xargs -0 grep -e 'WARN'  | grep -v 'tombstone cells for query' > warnings.log
+find . -name "system.log*" -print0 | xargs -0 grep -e 'gc'    | grep -v 'tombstone cells for query' > gc-from-system.log
+find . -name "system.log*" -print0 | xargs -0 grep -e 'ERROR\|WARN' | grep 'tombstone cells for query' > errors-tombstones.log
 ```
-
-Or use the helper script on the tarball directory (extracts to `/tmp/datastax/log-grep/extracted/` automatically):
-
-```bash
-./scripts/grep-logs.sh /tmp/datastax
-ls /tmp/datastax/log-grep/
-```
-
-| Note | Detail |
-|------|--------|
-| **Before Montecristo** | Point at `/tmp/datastax` (tarballs) or any directory you extracted manually |
-| **Tombstone filter** | `-v 'tombstone cells for query'` drops routine read-path WARN noise; `errors-tombstones.log` keeps only those lines |
-| **GC** | `grep gc` on `system.log` is broad; the collector also captures `logs/gc.log` — the script copies it to `gc.log` when present |
-| **Complement, not replace** | Montecristo indexes logs and applies discovery rules — see [Montecristo analysis](04-montecristo-analysis.md) |
 
 ---
 
-## Handoff — sperf and Montecristo
-
-Place all `*.tar.gz` (and `*.enc` if encrypted) in one directory.
-
-**sperf (optional, in Docker image):** `./scripts/analyze.sh sperf my-ticket-id /tmp/datastax` — see [sperf analysis](06-sperf-analysis.md).
-
-**Montecristo:** follow [Montecristo analysis](04-montecristo-analysis.md):
-
-1. **Build** the Docker image (once per machine): `./scripts/analyze.sh build` — [details](04-montecristo-analysis.md#build-the-image)
-2. **Run** analysis on your artifact directory:
-
-```bash
-./scripts/analyze.sh run my-ticket-id /tmp/datastax
-```
-
-3. **View** the Hugo report at **http://localhost:1313/final/** — [run options, encrypted bundles, output layout](04-montecristo-analysis.md#run-analysis)
-
-➡️ **Next:** [Montecristo analysis](04-montecristo-analysis.md)
+➡️ **Next:** [sperf analysis](05-sperf-analysis.md) · [Montecristo analysis](06-montecristo-analysis.md)

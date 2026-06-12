@@ -138,7 +138,7 @@ nodetool netstats
 
 Or attach with `jconsole` / `nodetool sjk` if available.
 
-Useful JMX families (names vary by version) — see [Key metrics to track](05-key-metrics.md) for the [triage flow](05-key-metrics.md#quick-triage-flow), [thresholds](05-key-metrics.md#suggested-targets), and full cheat sheet:
+Useful JMX families (names vary by version) — see [Key metrics to track](07-key-metrics.md) for the [triage flow](07-key-metrics.md#quick-triage-flow), [thresholds](07-key-metrics.md#suggested-targets), and full cheat sheet:
 
 - `org.apache.cassandra.metrics:type=ClientRequest,*` — latencies and timeouts.
 - `org.apache.cassandra.metrics:type=Compaction,*` — pending bytes, completed tasks.
@@ -174,6 +174,6 @@ Example:
 
 - Intermittent issues — need time-series metrics and historical logs.
 - Schema or capacity planning — need SSTable stats and table-level detail.
-- Cross-node comparison at scale — use [diagnostic collection](03-diagnostic-collection.md) and [Montecristo](04-montecristo-analysis.md).
+- Cross-node comparison at scale — use [diagnostic collection](04-diagnostic-collection.md) and [Montecristo](06-montecristo-analysis.md).
 
 ➡️ **Kubernetes / Mission Control:** [Health snapshot — Kubernetes](02-health-snapshot-kubernetes.md)

@@ -30,10 +30,10 @@ Environment:
   HUGO_BIND / HUGO_PORT
 
 Examples:
-  docker run --rm -v /tmp/datastax:/artifacts:ro -v ~/ds-discovery:/ds-discovery -p 1313:1313 \
+  docker run --rm -v "$(pwd)/diagnostics:/artifacts:ro" -v "$(pwd)/ds-discovery:/ds-discovery" -p 1313:1313 \
     montecristo docker-lab /artifacts
 
-  docker run --rm -v /tmp/datastax:/artifacts:ro -v ~/ds-discovery:/ds-discovery \
+  docker run --rm -v "$(pwd)/diagnostics:/artifacts:ro" -v "$(pwd)/ds-discovery:/ds-discovery" \
     montecristo sperf docker-lab /artifacts
 EOF
 }

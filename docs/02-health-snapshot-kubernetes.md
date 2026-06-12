@@ -133,7 +133,7 @@ Grafana (when enabled):
 kubectl port-forward svc/mission-control-grafana -n mission-control 3000:80
 ```
 
-Open **Mission Control Cluster** and **Mission Control System & Node Metrics** in Grafana (panel map and triage flow in [Key metrics — §10](05-key-metrics.md#10-mission-control-dashboard-map)):
+Open **Mission Control Cluster** and **Mission Control System & Node Metrics** in Grafana (panel map and triage flow in [Key metrics — §10](07-key-metrics.md#10-mission-control-dashboard-map)):
 
 | Check first | Grafana panels |
 |-------------|----------------|
@@ -192,4 +192,4 @@ Example:
 
 The [mc-lab observability guide](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md) walks through port-forwards, Grafana credentials, and pipeline troubleshooting on KinD.
 
-➡️ **Next:** [Diagnostic collection](03-diagnostic-collection.md) — gather a support bundle from VM or K8s.
+➡️ **Next:** [Local lab](03-local-lab.md) (workstation practice) · [Diagnostic collection](04-diagnostic-collection.md) (VM or K8s).

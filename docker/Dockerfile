@@ -7,7 +7,7 @@
 #   cp /path/to/dse-6.8.x-bin.tar.gz docker/optional/dse-bin.tar.gz
 #   docker build -t montecristo -f docker/Dockerfile docker/
 #   docker run --rm -v /path/to/collector-output:/artifacts:ro \
-#     -v "$HOME/ds-discovery:/ds-discovery" -p 1313:1313 \
+#     -v "$(pwd)/ds-discovery:/ds-discovery" -p 1313:1313 \
 #     montecristo lab-run /artifacts
 
 FROM ubuntu:22.04

@@ -331,7 +331,7 @@ See [K8s health snapshot §5](02-health-snapshot-kubernetes.md#5-observability-p
 ### Quick review from a collector tarball
 
 ```bash
-# Per-node snapshot (after extract or under ~/ds-discovery/.../extracted/)
+# Per-node snapshot (after extract or under ./ds-discovery/.../extracted/)
 cat extracted/*/os/uptime.txt extracted/*/os/free.txt
 grep -E '/var/lib/cassandra|/data|cassandra' extracted/*/storage/df-size.txt
 head extracted/*/os/vmstat.txt
@@ -388,13 +388,13 @@ Mission Control ships two primary Grafana dashboards for database health:
 |-------|------|--------|
 | **Live triage** | Incident now | `nodetool`, `tpstats`, Grafana Explore ([K8s snapshot](02-health-snapshot-kubernetes.md)) |
 | **Point-in-time bundle** | Post-incident / support | Collector `metrics.jmx`, `nodetool/*.txt`, `os/*`, `storage/*` in tarball |
-| **Trend + rules** | Deep review | [Montecristo](04-montecristo-analysis.md) `metrics.db` + report |
-| **Quick log scan** | Before Montecristo | [grep-logs helper](../scripts/grep-logs.sh) on `/tmp/datastax` |
+| **Trend + rules** | Deep review | [Montecristo](06-montecristo-analysis.md) `metrics.db` + report |
+| **Quick log scan** | Before Montecristo | Extract tarballs under `./diagnostics/` and grep `system.log` ([doc 04](04-diagnostic-collection.md#quick-log-triage-optional)) |
 
 ### Grep `metrics.jmx` from a tarball (logs only extracted)
 
 ```bash
-./scripts/grep-logs.sh /tmp/datastax   # logs
+# see docs/04-diagnostic-collection.md — quick log triage on ./diagnostics/
 grep 'ClientRequest.*Read.*99thPercentile' extracted/*/metrics.jmx
 grep 'ClientRequest.*Write.*99thPercentile' extracted/*/metrics.jmx
 grep 'PendingBytes' extracted/*/metrics.jmx
@@ -406,7 +406,7 @@ grep -E 'Use%|/cassandra|/data' extracted/*/storage/df-size.txt
 Or after Montecristo extraction:
 
 ```bash
-grep 'ClientRequest.*Latency.*99thPercentile' ~/ds-discovery/<issue>/extracted/*/metrics.jmx
+grep 'ClientRequest.*Latency.*99thPercentile' ./ds-discovery/<issue>/extracted/*/metrics.jmx
 ```
 
 ---
@@ -431,10 +431,12 @@ If you can only keep a handful of panels (names from **Mission Control Cluster**
 
 | Step | Metrics use |
 |------|-------------|
-| [1a Bare-metal snapshot](01-health-snapshot-bare-metal.md) | `tpstats`, `compactionstats`, JMX, OS checks (§4 storage, §9 host) |
-| [1b K8s snapshot](02-health-snapshot-kubernetes.md) | MC Cluster + System & Node dashboards, Loki ([§10](#10-mission-control-dashboard-map)) |
-| [2 Diagnostic collection](03-diagnostic-collection.md) | Full `metrics.jmx` snapshot per node |
-| [3 Montecristo](04-montecristo-analysis.md) | Parses JMX into `metrics.db`; report flags config and ops issues |
+| [01 Bare-metal snapshot](01-health-snapshot-bare-metal.md) | `tpstats`, `compactionstats`, JMX, OS checks (§4 storage, §9 host) |
+| [02 K8s snapshot](02-health-snapshot-kubernetes.md) | MC Cluster + System & Node dashboards, Loki ([§10](#10-mission-control-dashboard-map)) |
+| [03 Local lab](03-local-lab.md) | Stress before collector for non-empty `cfstats` / latencies |
+| [04 Diagnostic collection](04-diagnostic-collection.md) | Full `metrics.jmx` snapshot per node |
+| [05 sperf](05-sperf-analysis.md) | CLI summaries from collector layout |
+| [06 Montecristo](06-montecristo-analysis.md) | Parses JMX into `metrics.db`; report flags config and ops issues |
 
 ---
 

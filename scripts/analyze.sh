@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${MONTECRISTO_IMAGE:-montecristo}"
-DISCOVERY_DIR="${DS_DISCOVERY_DIR:-${HOME}/ds-discovery}"
+DISCOVERY_DIR="${DS_DISCOVERY_DIR:-${REPO_ROOT}/ds-discovery}"
 
 usage() {
   cat <<'EOF'
@@ -19,7 +19,7 @@ Usage:
 Environment:
   MONTECRISTO_IMAGE   Docker image name (default: montecristo)
   DSE_TARBALL         DSE binary tarball for optional SSTable stats (build only)
-  DS_DISCOVERY_DIR    Host mount for analysis output (default: ~/ds-discovery)
+  DS_DISCOVERY_DIR    Host mount for analysis output (default: <repo>/ds-discovery)
   SKIP_HUGO_SERVER    Pass through to container (true|false)
   SKIP_SPERF          Pass through to container (true|false)
 EOF

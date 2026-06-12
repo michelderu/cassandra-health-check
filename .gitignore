@@ -1,4 +1,8 @@
-ds-discovery/
+# Keep README.md; ignore generated collector/analysis output
+diagnostics/**
+!diagnostics/README.md
+ds-discovery/**
+!ds-discovery/README.md
 docker/optional/dse-bin.tar.gz
 *.tar.gz
 *.enc
