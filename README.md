@@ -1,6 +1,6 @@
 # Cassandra health check training
 
-Hands-on curriculum for technical specialists: understand Cassandra / HCD cluster health from **live signals**, then deepen with **diagnostic collection**, **[sperf](https://github.com/datastax-labs/sperf)** CLI summaries, and **Montecristo** reports.
+Hands-on curriculum for technical specialists: understand Cassandra / HCD cluster health from **live signals**, then deepen with **diagnostic collection**, **[sperf](https://github.com/datastax-labs/sperf)** CLI summaries, and **[Montecristo](https://github.com/datastax-labs/Montecristo)** reports.
 
 ![cassandra-on-fire](/cassandra-on-fire.png)
 
