@@ -437,6 +437,7 @@ If you can only keep a handful of panels (names from **Mission Control Cluster**
 | [04 Diagnostic collection](04-diagnostic-collection.md) | Full `metrics.jmx` snapshot per node |
 | [05 sperf](05-sperf-analysis.md) | CLI summaries from collector layout |
 | [06 Montecristo](06-montecristo-analysis.md) | Parses JMX into `metrics.db`; report flags config and ops issues |
+| [08 Troubleshooting](08-troubleshooting.md) | Latency → resources; architecture and outlier patterns |
 
 ---
 
@@ -445,3 +446,4 @@ If you can only keep a handful of panels (names from **Mission Control Cluster**
 - Apache Cassandra metrics: [Metric types](https://cassandra.apache.org/doc/latest/cassandra/operating/metrics.html) (upstream)
 - DataStax [Important metrics and alerts](https://docs.datastax.com/en/planning/dse/metrics-alerts.html) — KPI thresholds and alerting guidance
 - mc-lab [Observability](https://github.com/datastax/mc-lab/blob/main/docs/05-observability.md) — Mission Control metrics pipeline on KinD
+- [08 Troubleshooting — latency to machine resources](08-troubleshooting.md) — top-down incident guide and outlier patterns

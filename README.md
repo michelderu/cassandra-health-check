@@ -12,6 +12,8 @@ flowchart LR
   B --> M[06 Montecristo]
   S --> M
   R[07 Key metrics] -.-> A
+  R --> T[08 Troubleshooting]
+  T -.-> A
 ```
 
 ## Learning path
@@ -25,6 +27,7 @@ flowchart LR
 | **05** | [sperf analysis](docs/05-sperf-analysis.md) | CLI summaries from collector tarballs (in Docker image) |
 | **06** | [Montecristo analysis](docs/06-montecristo-analysis.md) | Containerized [Montecristo](https://github.com/datastax-labs/Montecristo) reports |
 | **07** | [Key metrics to track](docs/07-key-metrics.md) | Triage flow, thresholds, nodetool/JMX, Mission Control panels |
+| **08** | [Troubleshooting — latency to machine resources](docs/08-troubleshooting.md) | Top-down incident flow, Cassandra architecture and outlier patterns |
 
 ## Quick start — analysis container
 
@@ -45,7 +48,7 @@ See [docs/05-sperf-analysis.md](docs/05-sperf-analysis.md) and [docs/06-montecri
 
 | Path | Purpose |
 |------|---------|
-| [`docs/`](docs/01-health-snapshot-bare-metal.md) | Training modules 01–07 |
+| [`docs/`](docs/01-health-snapshot-bare-metal.md) | Training modules 01–08 |
 | [`docker/`](docker/Dockerfile) | Analysis image — Montecristo + sperf |
 | [`scripts/analyze.sh`](scripts/analyze.sh) | Build and run analysis container |
 | [`scripts/lab-stress.sh`](scripts/lab-stress.sh) | `cassandra-stress` on lab container |
