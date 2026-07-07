@@ -1,6 +1,6 @@
 # Local lab — Cassandra container and stress
 
-Single-node **`cassandra:5.0`** on your laptop for practicing [diagnostic collection](04-diagnostic-collection.md).
+Single-node **`cassandra:4`** on your laptop for practicing [diagnostic collection](04-diagnostic-collection.md).
 
 ---
 
@@ -15,7 +15,7 @@ Compose file: [`docker/docker-compose.cassandra.yml`](../docker/docker-compose.c
 
 | Setting | Value |
 |---------|--------|
-| Image | `cassandra:5.0` |
+| Image | `cassandra:4` |
 | Container | `ds-collector-test-cassandra` |
 | Cluster | `ds-collector-test` |
 | DC / rack | `dc1` / `rack1` |

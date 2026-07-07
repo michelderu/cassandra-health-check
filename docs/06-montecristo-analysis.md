@@ -12,8 +12,7 @@ This training uses a **Docker image** in this repository so you do not need Java
 2. Extracts per-node tarballs
 3. Builds a **metrics SQLite database** from `metrics.jmx` files
 4. Runs discovery rules and generates Markdown sections
-5. Runs **sperf** on the collector tarballs → `./ds-discovery/<ISSUE_ID>/sperf/` ([details](05-sperf-analysis.md))
-6. Serves an HTML report via **Hugo** (`/final/`)
+5. Serves an HTML report via **Hugo** (`/final/`)
 
 Set `SKIP_SPERF=true` to skip step 5. Upstream `run.sh` also supports S3 download; the container workflow here uses **local artifacts only** (`-c`).
 
@@ -64,26 +63,26 @@ The build runs `./build.sh -d` to extract proprietary jars into `dse-stats-conve
 ### Example — plain tarballs
 
 ```bash
-./scripts/analyze.sh run docker-lab ./diagnostics
+./scripts/analyze.sh run docker-lab /tmp/datastax
 ```
 
 This:
 
-- Mounts `./diagnostics` read-only at `/artifacts`
+- Mounts `/tmp/datastax` read-only at `/artifacts`
 - Writes results to `./ds-discovery/docker-lab/`
-- Starts Hugo on **http://localhost:1313/final/**
+- Starts Hugo on **http://localhost:1313**
 
 ### Example — encrypted artifacts
 
 ```bash
-./scripts/analyze.sh run docker-lab ./diagnostics /path/to/PROJECT_secret.key
+./scripts/analyze.sh run docker-lab /tmp/datastax /path/to/PROJECT_secret.key
 ```
 
 ### Example — manual `docker run`
 
 ```bash
 docker run --rm \
-  -v "$(pwd)/diagnostics:/artifacts:ro" \
+  -v "/tmp/datastax:/artifacts:ro" \
   -v "$(pwd)/ds-discovery:/ds-discovery" \
   -p 1313:1313 \
   montecristo docker-lab /artifacts
@@ -92,7 +91,7 @@ docker run --rm \
 ### Skip Hugo server (batch / CI)
 
 ```bash
-SKIP_HUGO_SERVER=true ./scripts/analyze.sh run docker-lab ./diagnostics
+SKIP_HUGO_SERVER=true ./scripts/analyze.sh run docker-lab /tmp/datastax
 ```
 
 View the report later:
@@ -100,7 +99,7 @@ View the report later:
 ```bash
 cd ./ds-discovery/docker-lab/reports/montecristo
 hugo server
-# open http://localhost:1313/final/
+# open http://localhost:1313
 ```
 
 ---

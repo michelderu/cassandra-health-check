@@ -1,6 +1,6 @@
 # sperf — quick CLI analysis (Docker)
 
-[sperf](https://github.com/datastax-labs/sperf) summarizes GC, StatusLogger, config diffs, and table hotspots from **ds-collector** bundles. It is **bundled in the analysis Docker image** — no local install required.
+[sperf](https://github.com/datastax-labs/sperf) summarizes GC, StatusLogger, config diffs, and table hotspots from **ds-collector** bundles. It supports cassandra version up to 4. It is **bundled in the analysis Docker image** — no local install required.
 
 Use it after [diagnostic collection](04-diagnostic-collection.md), before or with [Montecristo](06-montecristo-analysis.md).
 
@@ -22,8 +22,8 @@ sperf expects a legacy `nodes/<hostname>/` tree internally. The image **extracts
 ./scripts/analyze.sh build   # once — installs sperf in the image
 
 # sperf only (reads /artifacts/*.tar.gz inside the container)
-# Use an ISSUE_ID instead of 'docker-lab' to track tickets: ./scripts/analyze.sh sperf ISSUE_ID ./diagnostics
-./scripts/analyze.sh sperf docker-lab ./diagnostics
+# Use an ISSUE_ID instead of 'docker-lab' to track tickets: ./scripts/analyze.sh sperf ISSUE_ID /tmp/datastax
+./scripts/analyze.sh sperf docker-lab /tmp/datastax
 ls ./ds-discovery/docker-lab/sperf/
 ```
 

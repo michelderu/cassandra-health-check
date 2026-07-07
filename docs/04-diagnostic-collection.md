@@ -48,19 +48,20 @@ chmod +x ds-collector
 
 ### 2) Configure for Docker
 
-From the **repository root**, create the collector output directory. Artifacts are written to `./diagnostics/` (gitignored), not `/tmp/datastax`.
+From the **repository root**, create the collector output directory. Artifacts are written to `/tmp/datastax`.  
+Now create a backup of the default configuration for the collector:
 
 ```bash
-mkdir -p diagnostics
 cd collector
 cp collector.conf collector.conf.bak
-sed -i 's/^#use_docker=.*/use_docker="true"/' collector.conf
-sed -i 's/^#skipSudo=.*/skipSudo="true"/' collector.conf
-sed -i 's/^#?keepArtifact=.*/keepArtifact="true"/' collector.conf
-sed -i "s|^#?bastionBaseDir=.*|bastionBaseDir=\"$(cd .. && pwd)/diagnostics\"|" collector.conf
 ```
 
-`skipS3` is already `true` in the training bundle.
+And configure it as follows:
+```
+use_docker="true"
+skipSudo="true"
+issueId="<CUSTOMER>-<DATE>"
+```
 
 ### 3) Test and collect (single node)
 
@@ -74,12 +75,10 @@ Use the **container name** as the contact node and `-d` so discovery does not lo
 ./ds-collector -X -d -f collector.conf -n ds-collector-test-cassandra
 ```
 
-Artifacts appear under `./diagnostics/`:
+Artifacts appear under `/tmp/datastax`:
 
 ```bash
-ls -lh ../diagnostics/*.tar.gz    # from collector/
-# or, from repo root:
-ls -lh ./diagnostics/*.tar.gz
+ls -lh /tmp/datastax
 ```
 
 ---
@@ -114,17 +113,17 @@ Resolve any `NOTOK` lines before collecting (see upstream [TROUBLESHOOTING.md](h
 ./ds-collector -X -f collector.conf -n <CASSANDRA_CONTACT_NODE>
 ```
 
-Artifacts land under the configured `bastionBaseDir` (training default: `./diagnostics/`) as:
+Artifacts land under the configured `bastionBaseDir` (default: `./tmp/datastax`) as:
 
 ```
 <hostname>_artifacts_<timestamp>.tar.gz
 ```
 
-For local analysis without S3:
+For local analysis without S3 set `collector.conf` as:
 
-```bash
-sed -i 's/^#?keepArtifact=.*/keepArtifact="true"/' collector.conf
-sed -i 's/^#?skipS3=.*/skipS3="true"/' collector.conf
+```
+keepArtifact="true"
+skipS3="true"
 ```
 
 ### 4) Single node or subset
@@ -207,11 +206,11 @@ Right after collection, you can grep `system.log` for a fast sanity check. Tarba
 Extract collector output, then grep:
 
 ```bash
-mkdir -p ./diagnostics/log-triage
-for t in ./diagnostics/*_artifacts_*.tar.gz; do
-  tar -tzf "$t" | grep -E '/logs/.+' | tar -xzf "$t" -C ./diagnostics/log-triage -T -
+mkdir -p /tmp/datastax/log-triage
+for t in /tmp/datastax/*_artifacts_*.tar.gz; do
+  tar -tzf "$t" | grep -E '/logs/.+' | tar -xzf "$t" -C /tmp/datastax/log-triage -T /dev/stdin
 done
-cd ./diagnostics/log-triage
+cd /tmp/datastax/log-triage
 
 find . -name "system.log*" -print0 | xargs -0 grep -e 'ERROR' | grep -v 'tombstone cells for query' > errors.log
 find . -name "system.log*" -print0 | xargs -0 grep -e 'WARN'  | grep -v 'tombstone cells for query' > warnings.log

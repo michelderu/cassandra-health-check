@@ -2,7 +2,7 @@
 # Local training Cassandra — see docs/03-local-lab.md.
 services:
   cassandra:
-    image: cassandra:5.0
+    image: cassandra:4
     container_name: ds-collector-test-cassandra
     environment:
       MAX_HEAP_SIZE: 512M
